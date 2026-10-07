@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   User,
+  UserPlus,
   ShieldCheck,
   BookOpen,
   LogOut,
@@ -16,7 +17,7 @@ import { ADMIN_EMAIL } from '../lib/supabase';
 interface NavbarProps {
   activeTab: 'courses' | 'my-courses' | 'admin' | 'features';
   setActiveTab: (tab: 'courses' | 'my-courses' | 'admin' | 'features') => void;
-  openAuthModal: () => void;
+  openAuthModal: (tab?: 'login' | 'signup') => void;
   openConfigModal: () => void;
 }
 
@@ -224,11 +225,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <div className="flex items-center gap-2">
                 <button
-                  onClick={openAuthModal}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-semibold text-sm hover:from-emerald-500 hover:to-teal-400 shadow-lg shadow-emerald-500/20 transition-all active:scale-95"
+                  onClick={() => openAuthModal('login')}
+                  className="px-3.5 py-2 rounded-xl text-slate-300 hover:text-white font-semibold text-xs sm:text-sm hover:bg-slate-800/60 transition-all cursor-pointer"
                 >
-                  <User className="w-4 h-4" />
-                  <span>Gal / Sign In</span>
+                  Gal Koontada
+                </button>
+                <button
+                  onClick={() => openAuthModal('signup')}
+                  className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white font-semibold text-xs sm:text-sm hover:from-emerald-500 hover:to-teal-400 shadow-lg shadow-emerald-500/20 transition-all active:scale-95 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Is Diiwaangeli</span>
                 </button>
               </div>
             )}
@@ -306,13 +313,28 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               </>
             ) : (
-              <button
-                onClick={() => { openAuthModal(); setMobileMenuOpen(false); }}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 text-white font-medium"
-              >
-                <User className="w-4 h-4" />
-                <span>Gal / Sign In</span>
-              </button>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  onClick={() => {
+                    openAuthModal('login');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold cursor-pointer"
+                >
+                  <User className="w-4 h-4" />
+                  <span>Gal Koontada</span>
+                </button>
+                <button
+                  onClick={() => {
+                    openAuthModal('signup');
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-500 text-white text-xs font-semibold shadow-lg shadow-emerald-500/20 cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Is Diiwaangeli</span>
+                </button>
+              </div>
             )}
           </div>
         </div>

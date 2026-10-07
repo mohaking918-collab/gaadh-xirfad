@@ -34,7 +34,13 @@ const MainApp: React.FC = () => {
   const [paymentCourse, setPaymentCourse] = useState<Course | null>(null);
   const [playerCourse, setPlayerCourse] = useState<Course | null>(null);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'signup'>('login');
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+
+  const handleOpenAuthModal = (tab: 'login' | 'signup' = 'login') => {
+    setAuthModalTab(tab);
+    setIsAuthModalOpen(true);
+  };
 
   // Load initial courses and enrollments
   const loadData = async () => {
@@ -110,7 +116,7 @@ const MainApp: React.FC = () => {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        openAuthModal={() => setIsAuthModalOpen(true)}
+        openAuthModal={handleOpenAuthModal}
         openConfigModal={() => setIsConfigModalOpen(true)}
       />
 
@@ -260,6 +266,7 @@ const MainApp: React.FC = () => {
       <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
+        initialTab={authModalTab}
       />
 
       {/* 5. Supabase Config & Database Status Modal */}

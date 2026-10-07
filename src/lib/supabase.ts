@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Course, Enrollment, EnrollmentStatus, Profile } from '../types';
+import type { Course, Enrollment, EnrollmentStatus, Profile, UserRole } from '../types';
 import { INITIAL_COURSES, INITIAL_ENROLLMENTS } from '../data/initialCourses';
 
 // Admin email as specified in project mission
@@ -259,17 +259,121 @@ export async function updateEnrollmentStatus(id: string, status: EnrollmentStatu
 export async function signInWithGoogle() {
   const client = getSupabase();
   if (client) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
     return await client.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: origin,
         queryParams: {
           prompt: 'select_account'
         }
       }
     });
   }
-  return { data: null, error: new Error('Supabase URL not configured. Use demo login or configure Supabase keys.') };
+  return { data: null, error: new Error('Supabase URL ma aha mid sax ah ama lama habayn.') };
+}
+
+export async function signInWithEmail(email: string, password: string) {
+  const client = getSupabase();
+  if (client) {
+    return await client.auth.signInWithPassword({
+      email: email.trim(),
+      password
+    });
+  }
+  return { data: null, error: new Error('Supabase URL ma aha mid sax ah ama lama habayn.') };
+}
+
+export async function signUpWithEmail(email: string, password: string, fullName: string) {
+  const client = getSupabase();
+  if (client) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const cleanEmail = email.trim().toLowerCase();
+    const role: UserRole = cleanEmail === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student';
+    return await client.auth.signUp({
+      email: cleanEmail,
+      password,
+      options: {
+        data: {
+          full_name: fullName.trim(),
+          name: fullName.trim(),
+          role: role
+        },
+        emailRedirectTo: origin
+      }
+    });
+  }
+  return { data: null, error: new Error('Supabase URL ma aha mid sax ah ama lama habayn.') };
+}
+
+export async function sendMagicLink(email: string) {
+  const client = getSupabase();
+  if (client) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return await client.auth.signInWithOtp({
+      email: email.trim(),
+      options: {
+        emailRedirectTo: origin
+      }
+    });
+  }
+  return { data: null, error: new Error('Supabase URL ma aha mid sax ah ama lama habayn.') };
+}
+
+export async function resetPassword(email: string) {
+  const client = getSupabase();
+  if (client) {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    return await client.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: origin
+    });
+  }
+  return { data: null, error: new Error('Supabase URL ma aha mid sax ah ama lama habayn.') };
+}
+
+export async function upsertUserProfile(profile: Profile): Promise<boolean> {
+  const client = getSupabase();
+  if (!client) return false;
+  try {
+    const cleanEmail = profile.email.trim().toLowerCase();
+    const computedRole: UserRole = cleanEmail === ADMIN_EMAIL.toLowerCase() ? 'admin' : (profile.role || 'student');
+    const { error } = await client.from('profiles').upsert(
+      {
+        id: profile.id,
+        full_name: profile.full_name || cleanEmail.split('@')[0],
+        email: cleanEmail,
+        avatar_url: profile.avatar_url || '',
+        role: computedRole
+      },
+      { onConflict: 'id' }
+    );
+    if (error) {
+      console.warn('Profile sync notice:', error.message);
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.warn('upsertUserProfile error:', e);
+    return false;
+  }
+}
+
+export async function fetchUserProfile(userId: string): Promise<Profile | null> {
+  const client = getSupabase();
+  if (!client) return null;
+  try {
+    const { data, error } = await client
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    if (!error && data) {
+      return data as Profile;
+    }
+  } catch (e) {
+    console.warn('fetchUserProfile error:', e);
+  }
+  return null;
 }
 
 export function getActiveMockUser(): Profile | null {

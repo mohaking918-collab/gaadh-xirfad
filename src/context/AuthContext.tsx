@@ -1,11 +1,16 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import type { Profile } from '../types';
+import type { Profile, UserRole } from '../types';
 import {
   ADMIN_EMAIL,
   getSupabase,
   getActiveMockUser,
   setActiveMockUser,
   signInWithGoogle as supabaseGoogleSignIn,
+  signInWithEmail as supabaseSignInWithEmail,
+  signUpWithEmail as supabaseSignUpWithEmail,
+  sendMagicLink as supabaseSendMagicLink,
+  resetPassword as supabaseResetPassword,
+  upsertUserProfile,
   isSupabaseConnected
 } from '../lib/supabase';
 
@@ -14,7 +19,15 @@ interface AuthContextType {
   isAdmin: boolean;
   isLoading: boolean;
   isSupabaseActive: boolean;
-  loginWithGoogle: () => Promise<void>;
+  loginWithGoogle: () => Promise<{ error: Error | null }>;
+  loginWithEmail: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    fullName: string
+  ) => Promise<{ error: Error | null; user?: unknown; requiresEmailConfirmation?: boolean }>;
+  sendMagicLink: (email: string) => Promise<{ error: Error | null }>;
+  resetPassword: (email: string) => Promise<{ error: Error | null }>;
   loginAsDemoAdmin: () => void;
   loginAsDemoStudent: (name?: string, email?: string) => void;
   logout: () => Promise<void>;
@@ -33,39 +46,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (supabase) {
       // 1. Check existing Supabase session
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then(async ({ data: { session } }) => {
         if (session?.user) {
           const email = session.user.email || '';
+          const role: UserRole = email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student';
           const profile: Profile = {
             id: session.user.id,
             email: email,
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0],
-            avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-            role: email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student',
+            full_name:
+              session.user.user_metadata?.full_name ||
+              session.user.user_metadata?.name ||
+              email.split('@')[0],
+            avatar_url:
+              session.user.user_metadata?.avatar_url ||
+              session.user.user_metadata?.picture ||
+              '',
+            role: role,
             created_at: session.user.created_at
           };
           setUser(profile);
+          setActiveMockUser(profile);
+          await upsertUserProfile(profile);
         } else {
-          // In real Supabase mode, do not force mock user
           setUser(null);
         }
         setIsLoading(false);
       });
 
       // 2. Subscribe to auth changes
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      const {
+        data: { subscription }
+      } = supabase.auth.onAuthStateChange(async (_event, session) => {
         if (session?.user) {
           const email = session.user.email || '';
+          const role: UserRole = email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student';
           const profile: Profile = {
             id: session.user.id,
             email: email,
-            full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || email.split('@')[0],
-            avatar_url: session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || '',
-            role: email.toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student',
+            full_name:
+              session.user.user_metadata?.full_name ||
+              session.user.user_metadata?.name ||
+              email.split('@')[0],
+            avatar_url:
+              session.user.user_metadata?.avatar_url ||
+              session.user.user_metadata?.picture ||
+              '',
+            role: role,
             created_at: session.user.created_at
           };
           setUser(profile);
           setActiveMockUser(profile);
+          await upsertUserProfile(profile);
         } else {
           setUser(null);
           setActiveMockUser(null);
@@ -84,17 +115,127 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const loginWithGoogle = async () => {
+  const loginWithGoogle = async (): Promise<{ error: Error | null }> => {
     const supabase = getSupabase();
     if (supabase) {
       const { error } = await supabaseGoogleSignIn();
       if (error) {
         console.error('Google sign-in error:', error);
-        alert('Khalad ayaa ka dhacay Google sign-in: ' + error.message);
+        return { error: new Error(error.message) };
       }
+      return { error: null };
     } else {
-      alert('Fadlan geli Supabase Project URL iyo Anon Key (faylka .env.local ama badhanka Database Settings) si Google OAuth toos ugu xirmo Supabase.');
+      return {
+        error: new Error(
+          'Supabase lama habayn. Fadlan geli Supabase URL & Anon Key ama isticmaal habka demo-ga.'
+        )
+      };
     }
+  };
+
+  const loginWithEmail = async (email: string, password: string): Promise<{ error: Error | null }> => {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabaseSignInWithEmail(email, password);
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+      if (data?.user) {
+        const userEmail = data.user.email || email;
+        const role: UserRole = userEmail.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student';
+        const profile: Profile = {
+          id: data.user.id,
+          email: userEmail,
+          full_name:
+            data.user.user_metadata?.full_name ||
+            data.user.user_metadata?.name ||
+            userEmail.split('@')[0],
+          avatar_url:
+            data.user.user_metadata?.avatar_url ||
+            data.user.user_metadata?.picture ||
+            '',
+          role: role,
+          created_at: data.user.created_at
+        };
+        setUser(profile);
+        setActiveMockUser(profile);
+        await upsertUserProfile(profile);
+      }
+      return { error: null };
+    } else {
+      // Offline / demo fallback
+      if (email.trim().toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+        loginAsDemoAdmin();
+      } else {
+        loginAsDemoStudent(email.split('@')[0], email);
+      }
+      return { error: null };
+    }
+  };
+
+  const signUpWithEmail = async (
+    email: string,
+    password: string,
+    fullName: string
+  ): Promise<{ error: Error | null; user?: unknown; requiresEmailConfirmation?: boolean }> => {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { data, error } = await supabaseSignUpWithEmail(email, password, fullName);
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+      if (data?.user) {
+        const cleanEmail = email.trim().toLowerCase();
+        const role: UserRole = cleanEmail === ADMIN_EMAIL.toLowerCase() ? 'admin' : 'student';
+        const profile: Profile = {
+          id: data.user.id,
+          email: cleanEmail,
+          full_name: fullName.trim() || cleanEmail.split('@')[0],
+          avatar_url: '',
+          role: role,
+          created_at: data.user.created_at
+        };
+        if (data.session) {
+          setUser(profile);
+          setActiveMockUser(profile);
+          await upsertUserProfile(profile);
+        }
+        return {
+          error: null,
+          user: data.user,
+          requiresEmailConfirmation: !data.session
+        };
+      }
+      return { error: null };
+    } else {
+      // Offline fallback
+      loginAsDemoStudent(fullName, email);
+      return { error: null };
+    }
+  };
+
+  const sendMagicLink = async (email: string): Promise<{ error: Error | null }> => {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabaseSendMagicLink(email);
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+      return { error: null };
+    }
+    return { error: new Error('Supabase lama xirin.') };
+  };
+
+  const resetPassword = async (email: string): Promise<{ error: Error | null }> => {
+    const supabase = getSupabase();
+    if (supabase) {
+      const { error } = await supabaseResetPassword(email);
+      if (error) {
+        return { error: new Error(error.message) };
+      }
+      return { error: null };
+    }
+    return { error: new Error('Supabase lama xirin.') };
   };
 
   const loginAsDemoAdmin = () => {
@@ -108,6 +249,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setUser(adminUser);
     setActiveMockUser(adminUser);
+    upsertUserProfile(adminUser).catch(() => {});
   };
 
   const loginAsDemoStudent = (name = 'Liibaan Cumar', email = 'liibaan@example.com') => {
@@ -121,6 +263,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     setUser(studentUser);
     setActiveMockUser(studentUser);
+    upsertUserProfile(studentUser).catch(() => {});
   };
 
   const logout = async () => {
@@ -146,6 +289,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isLoading,
         isSupabaseActive,
         loginWithGoogle,
+        loginWithEmail,
+        signUpWithEmail,
+        sendMagicLink,
+        resetPassword,
         loginAsDemoAdmin,
         loginAsDemoStudent,
         logout
